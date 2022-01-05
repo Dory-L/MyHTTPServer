@@ -20,7 +20,6 @@
 #include <stdlib.h>
 #include "locker.h"
 
-
 class http_conn
 {
 public:
@@ -56,9 +55,9 @@ public:
         NO_REQUEST,/*请求不完整*/
         GET_REQUEST,/*获得了一个完整的客户端请求*/
         BAD_REQUEST,/*表示客户端请求有语法错误*/
-        NO_RESOURCE,/**/
+        NO_RESOURCE,/*资源找不到*/
         FORBIDDEN_REQUEST,/*客户端对资源没有足够的访问权限*/
-        FILE_REQUEST,/**/
+        FILE_REQUEST,/*文件请求*/
         INTERNAL_ERROR,/*服务器内部错误*/
         CLOSED_CONNECTION/*客户端已经关闭连接了*/
     };

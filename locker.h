@@ -27,7 +27,7 @@ public:
         return sem_wait(&m_sem) == 0;
     }
     /*增加信号量*/
-    bool psot()
+    bool post()
     {
         return sem_post(&m_sem) == 0;
     }

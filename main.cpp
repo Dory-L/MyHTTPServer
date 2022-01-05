@@ -59,7 +59,7 @@ int main(int argc, char* argv[])
     {
         pool = new threadpool<http_conn>;
     }
-    catch(...)
+    catch(...)//对所有异常都结束程序
     {
         return 1;
     }
@@ -71,7 +71,7 @@ int main(int argc, char* argv[])
 
     int listenfd = socket(PF_INET, SOCK_STREAM, 0);
     assert(listenfd >= 0);
-    struct linger tmp = {1, 0};
+    struct linger tmp = {1, 0};//调用close后，连接立即终止，TCP将丢弃残留在发送缓冲区中的数据并发送一个RST给对方，而不是通常的四分组终止序列，这避免了TIME_WAIT状态；在远端的recv()调用将以WSAECONNRESET出错。
     setsockopt(listenfd, SOL_SOCKET, SO_LINGER, &tmp, sizeof(tmp));
 
     int ret = 0;
@@ -88,7 +88,7 @@ int main(int argc, char* argv[])
     assert(ret >= 0);
 
     epoll_event events[MAX_EVENT_NUMBER];
-    int epollfd = epoll_create(5);
+    int epollfd = epoll_create(5);//5为监听事件数量
     assert(epollfd != -1);
     addfd(epollfd, listenfd, false);
     http_conn::m_epollfd = epollfd;
@@ -96,7 +96,7 @@ int main(int argc, char* argv[])
     while (true)
     {
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
-        if ((number < 0) && (errno != EINTR))
+        if ((number < 0) && (errno != EINTR))//EINTR:Interrupted system call
         {
             printf("epoll failure\n");
             break;
@@ -105,7 +105,7 @@ int main(int argc, char* argv[])
         for (int i = 0; i < number; i++)
         {
             int sockfd = events[i].data.fd;
-            if (sockfd == listenfd)
+            if (sockfd == listenfd)//监听socket
             {
                 struct sockaddr_in client_address;
                 socklen_t client_addrlength = sizeof(client_address);

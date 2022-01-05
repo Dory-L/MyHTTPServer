@@ -52,3 +52,141 @@ int msync( void *addr, size_t len, int flags )
     3）va_arg: 获取参数。它的第一个参数是ap，第二个参数是要获取的参数的指定类型。按照指定类型获取当前参数，返回这个指定类型的值，然后把 ap 的位置指向变参表中下一个变量的位置；
 
     4）va_end：释放指针，将输入的参数 ap 置为 NULL。通常va_start和va_end是成对出现。 
+
+三、无名信号量
+头文件： <semaphore.h>
+int sem_init(sem_t *sem, int pshared,unsigned value);
+功能：初始化指定的信号量
+返回值：成功 0 ； 错误 错误号。
+参数说明：sem：信号量变量名；参数value为信号量的初始值。
+参数pshared用于说明信号量的共享范围，如果pshared为0，那么该信号量只能由初始化这个信号量的进程中的线程使用，如果pshared非零，任何可以访问到这个信号量的进程都可以使用这个信号量。
+必须保证只调用sem_init()进行初始化一次，对于一个已初始化过的信号量调用sem_init()的行为是未定义的
+
+int sem_destroy(sem_t *sem);
+功能：销毁一个指定的信号量
+返回值：成功 0 ； 错误 错误号。
+参数说明：sem：信号量变量名（sem_init内值）
+摧毁一个有线程阻塞在其上的信号量的行为是未定义的。
+
+P操作：
+int sem_trywait(sem_t *sem);
+int sem_wait(sem_t *sem);
+int sem_timedwait(sem_t * sem, const struct timespec time); 
+减1信号量的值。信号量值为0时，sem_wait会阻塞，直到成功使信号量减1或者被信号中断时才返回；
+sem_trywait为非阻塞版本，当信号量为0时，该函数返回-1并且将errno置为EAGAIN
+sem_timedwait带有超时功能，超时到期并且信号量计数没能减1，sem_timedwait将返回-1且将errno设置为ETIMEDOUT。（毕竟一直阻塞也不是办法。。）
+
+V操作：
+int sem_post(sem_t *sem);
+信号量加1，若此时有sem_wait正在阻塞则唤醒执行。
+
+取值操作：
+int sem_t getvalue(sem_t sem, int *val);
+获取信号量的值，一般只用来调试，打印val查看。
+
+四、条件变量
+创建与销毁
+    1. 创建条件变量
+    Pthreads 用 pthread_cond_t 类型的变量来表示条件变量。程序必须在使用 pthread_cond_t变量之前对其进行初始化。
+    （1） 静态初始化
+        对于静态分配的变量可以简单地将 PTHREAD_COND_INITIALIZER 赋值给变量来初始化默认行为的条件变量。
+        pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+
+    （2）动态初始化
+        对动态分配或者不使用默认属性的条件变量来说可以使用 pthread _cond_init()来初始化。函数原型如下：
+        int pthread_cond_init(pthread_cond_t *restrict cond, const pthread_condattr_t *restrict attr);
+        参数 cond 是一个指向需要初始化 pthread_cond_t 变量的指针，参数 attr 传递 NULL 值时， pthread_cond_init()将 cond 初始化为默认属性的条件变量。
+        函数成功将返回 0；否则返回一个非 0 的错误码。
+        静态初始化程序通常比调用 pthread_cond_init()更有效，而且在任何线程开始执行之前，确保变量被执行一次。
+        以下代码示例了条件变量的初始化。
+        pthread_cond_t cond;
+        int error;
+        if (error = pthread_cond_init(&cond, NULL));
+        　　fprintf(stderr, "Failed to initialize cond : %s\n", strerror(error)); 
+
+    2. 销毁条件变量
+    函数 pthread_cond_destroy()用来销毁它参数所指出的条件变量，函数原型如下：
+    int pthread_cond_destroy(pthread_cond_t *cond);
+    函数成功调用返回 0，否则返回一个非 0 的错误码。以下代码演示了如何销毁一个条件变量。
+    pthread_cond_t cond;
+    int error;
+    if (error = pthread_cond_destroy(&cond))
+    　　fprintf(stderr, "Failed to destroy cond : %s\n", strerror(error));
+
+等待与通知
+    等待 
+    条件变量是与条件测试一起使用的，通常线程会对一个条件进行测试，如果条件不满足就会调用条件等待函数来等待条件满足。
+    条件等待函数有 pthread_cond_wait()pthread_cond_timedwait()和两个，函数原型如下：
+    int pthread_cond_wait(pthread_cond_t *restrict cond, pthread_mutex_t *restrict mutex);
+    int pthread_cond_timedwait(pthread_cond_t *restrict cond, pthread_mutex_t *restrict mutex, const struct timespec *restrict abstime);
+    
+    pthread_cond_wait()函数在条件不满足时将一直等待， 而 pthread_cond_timedwait()将只等待一段时间。
+    参数 cond 是一个指向条件变量的指针，参数 mutex 是一个指向互斥量的指针，线程在调用前应该拥有这个互斥量，当线程要加入条件变量的等待队列时，等待操作会使线程释放这个互斥量。 pthread_timedwait()的第三个参数 abstime 是一个指向返回时间的指针，如果条件变量通知信号没有在此等待时间
+    之前出现，等待将超时退出， abstime 是个绝对时间，而不是时间间隔。
+
+    以上函数成功调用返回 0，否则返回非 0 的错误码，其中 pthread_cond_timedwait（） 函数如果 abstime 指定的时间到期，错误码为 ETIMEOUT。
+    以下代码使得线程进入等待，直到收到通知并且满足 a 大于等于 b 的条件。
+    pthread_mutex_lock(&mutex)
+    while(a < b)
+    　　pthread_cond_wait(&cond, &mutex)
+    pthread_mutex_unlock(&mutex)
+
+    
+    通知 
+    当另一个线程修改了某参数可能使得条件变量所关联的条件变成真时，它应该通知一个或者多个等待在条件变量等待队列中的线程。
+    条件通知函数有 pthread_cond_signal()和 pthread_cond_broadcast()函数，其中 pthread_cond_signal 函数可以唤醒一个在条件变量等待队列等待的线程，而 pthread_cond_broadcast函数可以所有在条件变量等待队列等待的线程。函数原型如下：
+
+    int pthread_cond_broadcast(pthread_cond_t *cond);
+    int pthread_cond_signal(pthread_cond_t *cond);
+    参数 cond 是一个指向条件变量的指针。函数成功返回 0，否则返回一个非 0 的错误码。
+
+五、信号
+int sigaction(int signum, const struct sigaction *act,  struct sigaction *oldact);
+signum指定信号，可以是除SIGKILL和SIGSTOP之外的任何有效信号。
+如果act为非NULL，则从act安装信号符号的新操作。如果oldact为非NULL，则旧的act保存在oldact中。
+The sigaction structure is defined as something like:
+    struct sigaction {
+        void     (*sa_handler)(int);
+        void     (*sa_sigaction)(int, siginfo_t *, void *);
+        sigset_t   sa_mask;
+        int        sa_flags;
+        void     (*sa_restorer)(void);
+    };
+在某些体系结构中涉及到联合体：不要同时分配给sa_handler和sa_sigaction。
+sa_restorer字段不适用于应用程序。
+sa_handler指定要与signum关联的操作，并且可以是默认操作的SIG_DFL，忽略此信号或指向信号处理函数的指针的信号。此功能接收信号数字作为它的唯一参数。
+如果在sa_flags中指定了SA_SIGINFO，则sa_sigaction（而不是SA_handler）将为信号signum指定signal-handling函数。此函数接收三个参数，如下所述。
+sa_mask设置进程的信号掩码（在原有信号掩码的基础上）。此外，该信号除非使用SA_NODEFER标志，否则处理程序将被阻止。
+信号集函数：
+    #include <signal.h>
+    int sigemptyset(sigset_t* _set) //清空信号集
+    int sigfillset(sigset_t* _set)//在信号集中设置所有信号
+    int sigaddset(sigset_t* _set, int _signo)//将信号_signo添加至信号集中
+    int sigdelset(sigset_t* _set, int _signo)//将信号_signo从信号集中删除
+    int sigismember(_const sigset_t* _set, int _signo)//测试_signo是否在信号集中
+sa_flags指定一组修改信号行为的标志。它是由按位或的以下零项或多项：
+    SA_INTERRUPT 由此信号中断的系统调用不会自动重启
+    SA_RESTART 由此信号中断的系统调用会自动重启
+    SA_SIGINFO 提供附加信息，一个指向siginfo结构的指针以及一个指向进程上下文标识符的指针
+    SA_NODEFER 一般情况下，当信号处理函数运行时，内核将阻塞(sigaction函数注册时的信号)。但是如果设置了SA_NODEFER标记， 那么在该信号处理函数运行时，内核将不会阻塞该信号。
+    SA_RESETHAND  当调用信号处理函数时或信号处理函数结束后，将信号的处理设置为系统默认值。 
+
+被挂起的信号
+    #include <signal.h>
+    int sigpending(sigset* _set);
+    接收进程当前被挂起信号的信号集
+    return 成功0 失败-1，errno
+
+六、Linux Socket SO_LINGER选项
+    SO_LINGER 选项可以用来控制调用close函数关闭socket后的行为。 
+    struct linger
+    {
+        int l_onoff;		/* Nonzero to linger on close.  */
+        int l_linger;		/* Time to linger.  */
+    };
+    有下列三种情况：
+    1、设置 l_onoff为0，l_linger的值被忽略，等于内核缺省情况，close调用会立即返回给调用者，TCP模块负责尝试发送残留的缓冲区数据。
+    2、设置 l_onoff为1，l_linger为0，则连接立即终止，TCP将丢弃残留在发送缓冲区中的数据并发送一个RST给对方，而不是通常的四分组终止序列，这避免了TIME_WAIT状态；在远端的recv()调用将以WSAECONNRESET出错。
+    3、设置 l_onoff为1，l_linger > 0：
+        如果socket为阻塞的，则close将阻塞等待l_linger 秒的时间，如果在l_linger秒时间内，TCP模块成功发送完残留的缓冲区数据，则close返回0，表示成功。如果l_linger时间内，TCP模块没有成功发送完残留的缓冲区数据，则close返回-1，表示失败，并将errno设置为EWOULDBLOCK。
+        如果socket为非阻塞，close立即返回，此时需要根据close返回值以及errno来判断TCP模块是否成功发送残留的缓冲区数据。

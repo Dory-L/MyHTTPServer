@@ -52,7 +52,7 @@ threadpool<T>::threadpool(int thread_number, int max_requests) : m_thread_number
             delete [] m_threads;
             throw std::exception();
         }
-        if (pthread_detach(m_thread[i]))
+        if (pthread_detach(m_threads[i]))
         {
             delete [] m_threads;
             throw std::exception();
@@ -64,7 +64,7 @@ threadpool<T>::threadpool(int thread_number, int max_requests) : m_thread_number
 template<typename T>
 threadpool<T>::~threadpool()
 {
-    default [] m_threads;
+    delete [] m_threads;
     m_stop = true;
 }
 
@@ -83,21 +83,27 @@ bool threadpool<T>::append(T* request)
     m_queuestat.post();
     return true;
 }
-
+template<typename T>
+void* threadpool<T>::worker(void* arg)
+{
+    threadpool* pool = (threadpool*)arg;
+    pool->run();
+    return pool;
+}
 template<typename T>
 void threadpool<T>::run()
 {
     while (!m_stop)
     {
         m_queuestat.wait();
-        m_queuelocker.lcok();
+        m_queuelocker.lock();
         if (m_workqueue.empty())
         {
-            m_workqueue.unlock();
+            m_queuelocker.unlock();
             continue;
         }
         T* request = m_workqueue.front();
-        m_workqueue.pop_front;
+        m_workqueue.pop_front();
         m_queuelocker.unlock();
         if(!request)
         {

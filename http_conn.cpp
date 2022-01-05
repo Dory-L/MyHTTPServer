@@ -34,6 +34,8 @@ void addfd(int epollfd, int fd, bool one_shot)
     {
         event.events |= EPOLLONESHOT; //只监听一次，如还要监听需要重新加入监听队列
     }
+    epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
+    setnonblocking(fd);//注册事件，注册fd到epollfd中
 }
 
 void removefd(int epollfd, int fd)
@@ -134,7 +136,7 @@ http_conn::LINE_STATUS http_conn::parse_line()
 /*循环读取客户数据，直到无数据可读或者对方关闭连接*/
 bool http_conn::read()
 {
-    if (m_read_idx >= READ_BUFFER_SIZE)
+    if (m_read_idx >= READ_BUFFER_SIZE)//溢出
         return false;
 
     int bytes_read = 0;
@@ -145,18 +147,18 @@ bool http_conn::read()
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                break;
+                break;//fd非阻塞，recv阻塞发生错误
             }
             return false;
         }
         else if (bytes_read == 0)
         {
-            return false;
+            return false;//无数据
         }
 
-        m_read_idx += bytes_read;
+        m_read_idx += bytes_read;//移动读取指针
     }
-    return true;
+    return true;//读取完数据
 }
 
 /*解析http请求行，获得请求方法、目标url， 以及http版本号*/
@@ -272,7 +274,7 @@ http_conn::HTTP_CODE http_conn::process_read()
     LINE_STATUS line_status = LINE_OK;
     HTTP_CODE ret = NO_REQUEST;
     char *text = 0;
-    while (((m_check_state == CHECK_STATE_CONTENT) && (line_status == LINE_OK)) || ((line_status == parse_line()) == LINE_OK))
+    while (((m_check_state == CHECK_STATE_CONTENT) && (line_status == LINE_OK)) || ((line_status = parse_line()) == LINE_OK))
     {
         text = get_line();
         m_start_line = m_checked_idx; //记录下一行的起始位置
@@ -295,7 +297,7 @@ http_conn::HTTP_CODE http_conn::process_read()
             {
                 return BAD_REQUEST;
             }
-            else if (ret = GET_REQUEST)
+            else if (ret == GET_REQUEST)
             {
                 return do_request();
             }
@@ -323,7 +325,7 @@ http_conn::HTTP_CODE http_conn::process_read()
 /*当得到一个完整、正确的HTTP请求时，我们分析目标文件的属性。如果目标文件存在、对所在用户可读，且不是目录，则使用mmap将其映射到内存地址m_file_address处，并告诉调用者获取文件成功*/
 http_conn::HTTP_CODE http_conn::do_request()
 {
-    strcpy(m_file_address, doc_root);
+    strcpy(m_real_file, doc_root);
     int len = strlen(doc_root);
     strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
     if (stat(m_real_file, &m_file_stat) < 0)
@@ -450,6 +452,11 @@ bool http_conn::add_blank_line()
     return add_response("%s", "\r\n");
 }
 
+bool http_conn::add_content(const char* content)
+{
+    return add_response("%s", content);
+}
+
 bool http_conn::process_write(HTTP_CODE ret)
 {
     switch (ret)
@@ -532,7 +539,7 @@ bool http_conn::process_write(HTTP_CODE ret)
 void http_conn::process()
 {
     HTTP_CODE read_ret = process_read();
-    if (read_ret == NO_REQUEST)
+    if (read_ret == NO_REQUEST)//请求不完整
     {
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         return;
